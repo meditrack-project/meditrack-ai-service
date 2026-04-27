@@ -1,0 +1,111 @@
+name: "CI/CD — AI Service"
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: write 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  sonarqube:
+    name: "1. SonarQube"
+    uses: meditrack-project/meditrack-templates/.github/workflows/sonarqube.yml@main
+    with:
+      service_name:      meditrack-ai-service
+      service_path:      "."
+      sonar_project_key: meditrack-ai-service
+      language:          python
+      python_version:    "3.12"
+    secrets:
+      SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+      SONARQUBE_URL:   ${{ secrets.SONARQUBE_URL }}
+      SMTP_USERNAME:   ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD:   ${{ secrets.SMTP_PASSWORD }}
+      ALERT_EMAIL:     ${{ secrets.ALERT_EMAIL }}
+
+  snyk:
+    name: "2. Snyk SCA"
+    needs: sonarqube
+    uses: meditrack-project/meditrack-templates/.github/workflows/snyk.yml@main
+    with:
+      service_name:   meditrack-ai-service
+      service_path:   "."
+      language:       python
+      python_version: "3.12"
+    secrets:
+      SNYK_TOKEN:    ${{ secrets.SNYK_TOKEN }}
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      ALERT_EMAIL:   ${{ secrets.ALERT_EMAIL }}
+
+  docker:
+    name: "3-5. Docker Build → Trivy → Push"
+    needs: snyk
+    if: github.event_name == 'push'
+    uses: meditrack-project/meditrack-templates/.github/workflows/docker-build.yml@main
+    with:
+      service_name:      meditrack-ai-service
+      service_path:      "."
+      docker_image_name: meditrack-ai-service
+      language:          python
+      branch:            ${{ github.ref_name }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN:    ${{ secrets.DOCKERHUB_TOKEN }}
+      SMTP_USERNAME:      ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD:      ${{ secrets.SMTP_PASSWORD }}
+      ALERT_EMAIL:        ${{ secrets.ALERT_EMAIL }}
+
+  deploy-dev:
+    name: "6. Deploy → Dev"
+    needs: docker
+    if: github.ref == 'refs/heads/dev'
+    uses: meditrack-project/meditrack-templates/.github/workflows/cd-update.yml@main
+    with:
+      service_name:     meditrack-ai-service
+      helm_service_key: aiService
+      image_tag:        ${{ needs.docker.outputs.image_tag }}
+      environment:      dev
+      version:          ${{ needs.docker.outputs.version }}
+    secrets:
+      GITOPS_TOKEN:  ${{ secrets.GITOPS_TOKEN }}
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      ALERT_EMAIL:   ${{ secrets.ALERT_EMAIL }}
+
+  approval:
+    name: "6. Approval Gate → Prod"
+    needs: docker
+    if: github.ref == 'refs/heads/main'
+    uses: meditrack-project/meditrack-templates/.github/workflows/approval-gate.yml@main
+    with:
+      service_name:     meditrack-ai-service
+      image_tag:        ${{ needs.docker.outputs.image_tag }}
+      helm_service_key: aiService
+    secrets:
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      ALERT_EMAIL:   ${{ secrets.ALERT_EMAIL }}
+
+  deploy-prod:
+    name: "7. Deploy → Prod"
+    needs: [docker, approval]
+    if: github.ref == 'refs/heads/main'
+    uses: meditrack-project/meditrack-templates/.github/workflows/cd-update.yml@main
+    with:
+      service_name:     meditrack-ai-service
+      helm_service_key: aiService
+      image_tag:        ${{ needs.docker.outputs.image_tag }}
+      environment:      prod
+      version:          ${{ needs.docker.outputs.version }}
+    secrets:
+      GITOPS_TOKEN:  ${{ secrets.GITOPS_TOKEN }}
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      ALERT_EMAIL:   ${{ secrets.ALERT_EMAIL }}
