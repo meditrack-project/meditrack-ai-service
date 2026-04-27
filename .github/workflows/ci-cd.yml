@@ -14,7 +14,7 @@ jobs:
 
   sonarqube:
     name: "1. SonarQube"
-    uses: meditrack-project/meditrack-templates/.github/workflows/templates/sonarqube.yml@main
+    uses: meditrack-project/meditrack-templates/.github/workflows/sonarqube.yml@main
     with:
       service_name:      meditrack-ai-service
       service_path:      "."
@@ -31,7 +31,7 @@ jobs:
   snyk:
     name: "2. Snyk SCA"
     needs: sonarqube
-    uses: meditrack-project/meditrack-templates/.github/workflows/templates/snyk.yml@main
+    uses: meditrack-project/meditrack-templates/.github/workflows/snyk.yml@main
     with:
       service_name:   meditrack-ai-service
       service_path:   "."
@@ -47,7 +47,7 @@ jobs:
     name: "3-5. Docker Build → Trivy → Push"
     needs: snyk
     if: github.event_name == 'push'
-    uses: meditrack-project/meditrack-templates/.github/workflows/templates/docker-build.yml@main
+    uses: meditrack-project/meditrack-templates/.github/workflows/docker-build.yml@main
     with:
       service_name:      meditrack-ai-service
       service_path:      "."
@@ -65,7 +65,7 @@ jobs:
     name: "6. Deploy → Dev"
     needs: docker
     if: github.ref == 'refs/heads/dev'
-    uses: meditrack-project/meditrack-templates/.github/workflows/templates/cd-update.yml@main
+    uses: meditrack-project/meditrack-templates/.github/workflows/cd-update.yml@main
     with:
       service_name:     meditrack-ai-service
       helm_service_key: aiService
@@ -82,7 +82,7 @@ jobs:
     name: "6. Approval Gate → Prod"
     needs: docker
     if: github.ref == 'refs/heads/main'
-    uses: meditrack-project/meditrack-templates/.github/workflows/templates/approval-gate.yml@main
+    uses: meditrack-project/meditrack-templates/.github/workflows/approval-gate.yml@main
     with:
       service_name:     meditrack-ai-service
       image_tag:        ${{ needs.docker.outputs.image_tag }}
@@ -96,7 +96,7 @@ jobs:
     name: "7. Deploy → Prod"
     needs: [docker, approval]
     if: github.ref == 'refs/heads/main'
-    uses: meditrack-project/meditrack-templates/.github/workflows/templates/cd-update.yml@main
+    uses: meditrack-project/meditrack-templates/.github/workflows/cd-update.yml@main
     with:
       service_name:     meditrack-ai-service
       helm_service_key: aiService
