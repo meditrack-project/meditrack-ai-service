@@ -44,4 +44,4 @@ async def health_check():
         "service": "ai-service",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-#add1
+
